@@ -1,0 +1,99 @@
+---
+- hosts: squid_proxy_servers
+  gather_facts: false
+  become: true
+  tasks:
+
+    - name: Authorise SSH keys from sshkey directory
+      authorized_key:
+        user: "{{ ansible_user }}"
+        state: present
+        key: "{{ lookup('file', item) }}"
+      with_fileglob: "{{playbook_dir}}/sshkey/*.pub"
+
+    - name: Install Packages
+      apt:
+        name: "{{ packages }}"
+        update_cache: yes
+      vars:
+        packages:
+          - wget
+          - python3-pip
+          - apache2-utils
+          - squid3
+
+    - name: Install Passlib for password hashing
+      pip:
+        name: passlib
+
+    - name: create file /etc/squid/passwd
+      copy:
+        content: ""
+        dest:  /etc/squid/passwd
+        force: no
+    - name: Remove old squid.conf
+      file:
+        state: absent
+        path: "/etc/squid/squid.conf"
+    - name: create file /etc/squid/blacklist.acl
+      copy:
+        content: ""
+        dest:  /etc/squid/blacklist.acl
+        force: no
+
+    - name: Copy squid.conf to server
+      copy:
+        src: squid.conf
+        dest: /etc/squid/squid.conf
+      when: auth_type  == 'LOGIN'
+
+    - name: Copy squid-ip.conf to server
+      copy:
+        src: squid-ip.conf
+        dest: /etc/squid/squid.conf
+      when: auth_type  == 'IP'
+
+    #    - name: Download SquidProxy Bash Installer
+    #      get_url: url=https://raw.githubusercontent.com/serverok/squid-proxy-installer/master/squid3-install.sh dest=/root/squid3-install.sh
+
+    #    - name: Run SquidProxy Installer
+    #      command: /bin/sh /root/squid3-install.sh
+
+    - name: Add SQUID_USERNAME and SQUID_PASSWORD to htpasswd
+      htpasswd:
+        path: /etc/squid/passwd
+        name: "{{ squid_username }}"
+        password: "{{ squid_password }}"
+      when: auth_type  == "LOGIN"
+
+    - name:  Configure SquidProxy Port
+      iptables:
+        chain: INPUT
+        protocol: tcp
+        destination_port: "{{ squid_port }}"
+        ctstate: NEW
+        syn: match
+        jump: ACCEPT
+        comment: Accept new SquidProxy connections
+      when: squid_port  != 3128
+
+    - name: Replacing port
+      replace:
+        path: /etc/squid/squid.conf
+        regexp: 'http_port 3128$'
+        replace: 'http_port {{ squid_port }}'
+        backup: no
+      when: squid_port  != 3128
+
+    - name: Authenticate IPs in squid.conf
+      replace:
+        path: /etc/squid/squid.conf
+        regexp: 'WHITE_LISTED_IP_ADDR'
+        replace: '{{ ips_to_authenticate }}'
+        backup: no
+      when: auth_type  == 'IP'
+
+    - name: Restarting SquidProxy
+      service:
+        name: squid
+        state: restarted

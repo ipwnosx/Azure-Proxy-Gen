@@ -1,0 +1,9 @@
+all:
+  children:
+    squid_proxy_servers:
+      hosts:
+*|ANSIBLE_HOST_PATTERN|*
+      vars:
+        ansible_ssh_common_args: '-o UserKnownHostsFile=/dev/null'
+        host_key_checking: false
+        ansible_python_interpreter: /usr/bin/python3

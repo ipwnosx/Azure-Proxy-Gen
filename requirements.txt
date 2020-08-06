@@ -1,0 +1,8 @@
+requests
+tqdm
+tabulate
+colorama
+ansible
+paramiko
+passlib
+SQLAlchemy
